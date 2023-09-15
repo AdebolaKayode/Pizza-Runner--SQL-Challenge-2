@@ -1,0 +1,271 @@
+#DATA_CLEANING
+
+UPDATE  customer_orders SET exclusions = NULL
+WHERE exclusions = 'None' ;
+
+#
+UPDATE  customer_orders SET extras = NULL
+WHERE extras = 'None' ;
+
+#
+UPDATE  runner_orders SET cancellation = NULL
+WHERE cancellation = '' ;
+
+#
+UPDATE runner_orders SET distance = 
+SUBSTRING_INDEX(distance,'km',+1)
+
+
+ALTER TABLE runner_orders
+CHANGE COLUMN distance distance INT;
+
+#
+UPDATE runner_orders SET duration = 
+SUBSTRING_INDEX(duration,'mins',+1)
+UPDATE runner_orders SET duration = 
+SUBSTRING_INDEX(duration,'minute',+1)
+UPDATE runner_orders SET duration = 
+SUBSTRING_INDEX(duration,'minutes',+1)
+
+ALTER TABLE runner_orders
+CHANGE COLUMN duration duration INT;
+
+#
+UPDATE  runner_orders SET cancellation = 
+	COALESCE(cancellation, 'No Cancellation')
+	
+UPDATE  runner_orders SET duration = 
+	COALESCE(duration, 0)
+	
+UPDATE  runner_orders SET distance = 
+	COALESCE(distance, 0)
+	
+ALTER TABLE runner_orders
+CHANGE COLUMN pickup_time pickup_time TIMESTAMP
+
+#
+UPDATE  customer_orders SET exclusions = 
+	COALESCE(exclusions, 'None')
+	
+UPDATE  customer_orders SET extras = 
+	COALESCE(extras, 'None')
+;
+
+
+
+
+#CASE STUDY QUESTIONS#
+
+#A: PIZZA METRICS
+
+		#1:HOW MANY PIZZAS WERE ORDERED
+		SELECT COUNT(order_id)
+		FROM customer_orders;
+
+		#2:
+		SELECT COUNT(DISTINCT order_id)
+		FROM customer_orders;
+		
+		#3:
+		SELECT COUNT(order_id)
+		FROM runner_orders
+		WHERE cancellation = 'No Cancellation';
+		
+		#4: How many of each type of pizza was delivered
+		SELECT 
+			COUNT(CASE WHEN CO.pizza_id = 1 THEN RO.order_id END) AS MeatLovers,
+			COUNT(CASE WHEN CO.pizza_id = 2 THEN RO.order_id END) AS Vegetarian
+			FROM customer_orders CO
+			LEFT JOIN runner_orders RO
+				ON CO.order_id = RO.order_id
+			WHERE cancellation <> 'Restaurant Cancellation' 
+				AND cancellation <> 'Customer Cancellation'
+		;
+		
+		#5:
+		SELECT (SELECT count(pizza_id) 
+									FROM customer_orders
+									WHERE pizza_id = 1) AS MeatLovers, 
+					(SELECT count(pizza_id) 
+									FROM customer_orders
+									WHERE pizza_id = 2) AS Vegetarian
+		FROM customer_orders;
+		
+		#6: What was the maximum number of pizzas delivered in a single order ?
+		SELECT CO.order_id, COUNT(CO.order_id) AS num_of_delivered_pizza
+		FROM customer_orders CO
+		INNER JOIN runner_orders RO
+		ON CO.order_id = RO.order_id
+		WHERE RO.cancellation = 'No Cancellation'
+		GROUP BY CO.order_id
+		ORDER BY num_of_delivered_pizza DESC
+		LIMIT 1;
+		
+		#7: For Each Customer, how many delivered pizzas had at least 1 change and how many had no changes?
+		
+	# USING A CTE @ with changes
+	WITH Changes_count AS (
+		SELECT customer_id, COUNT(CO.order_id) AS DeliveredPizzaCount,
+				COUNT(CASE WHEN exclusions <> 'NONE' THEN 1 END) AS exclusion_count,
+				COUNT(CASE WHEN extras <> 'NONE' THEN 1 END) AS extras_count
+		FROM customer_orders CO
+		LEFT JOIN runner_orders RO
+				ON CO.order_id = RO.order_id
+		WHERE cancellation <> 'Restaurant Cancellation' 
+				AND cancellation <> 'Customer Cancellation'
+		GROUP BY customer_id)
+	# CALLING THE CTE	
+	SELECT customer_id,DeliveredPizzaCount,
+				(exclusion_count + extras_count) AS Changes_Count
+		FROM Changes_count;
+		
+		# USING A CTE @ No Changes
+	WITH Changes_count AS (
+		SELECT customer_id, COUNT(CO.order_id) AS DeliveredPizzaCount,
+				COUNT(CASE WHEN exclusions = 'NONE' THEN 1 END) AS exclusion_count,
+				COUNT(CASE WHEN extras = 'NONE' THEN 1 END) AS extras_count
+		FROM customer_orders CO
+		LEFT JOIN runner_orders RO
+				ON CO.order_id = RO.order_id
+		WHERE cancellation <> 'Restaurant Cancellation' 
+				AND cancellation <> 'Customer Cancellation'
+		GROUP BY customer_id)
+	# CALLING THE CTE	
+	SELECT customer_id,DeliveredPizzaCount,
+				(exclusion_count + extras_count) AS No_Changes
+		FROM Changes_count;
+		
+		#8: 
+		SELECT customer_id, COUNT(CO.order_id) AS DeliveredPizzaCount,
+				COUNT(CASE WHEN exclusions <> 'None' AND extras <> 'None' THEN 1 END) AS exclusion_count
+						
+		FROM customer_orders CO
+		LEFT JOIN runner_orders RO
+				ON CO.order_id = RO.order_id
+		WHERE cancellation <> 'Restaurant Cancellation' 
+				AND cancellation <> 'Customer Cancellation'
+		GROUP BY customer_id
+		
+		#9:
+		SELECT COUNT(order_id) As Total_Volume_of_Orders,
+		EXTRACT(hour FROM order_time) As Per_Delivery_hour
+		FROM customer_orders
+		GROUP BY Per_Delivery_hour
+		ORDER BY Per_Delivery_hour
+		
+		#10:
+		SELECT COUNT(order_id) As Total_Volume_of_Orders,
+		EXTRACT(day FROM order_time) As Per_Weekday
+		FROM customer_orders
+		GROUP BY Per_Weekday
+		ORDER BY Per_Weekday
+		
+#B: RUNNER AND CUSTOMER EXPERIENCE
+
+		#1:
+		SELECT COUNT(runner_id), EXTRACT(WEEK FROM registration_date) AS Reg_week
+		FROM runners
+		GROUP BY Reg_week
+	
+		#2:
+		SELECT runner_id, AVG(EXTRACT(MINUTE FROM pickup_time)) AS Avg_pickup_time_in_minutes
+		FROM runner_orders
+		GROUP BY runner_id
+		
+		#3: Is there any relationship between the number of pizzas and hoq long the order takes to prepare {NOT WORKING}
+		WITH Prep_time AS (
+		SELECT CO.order_id, (TIME_TO_SEC(order_time) - TIME_TO_SEC(pickup_time)) / 60 AS Preparation_time
+		FROM runner_orders RO
+		LEFT JOIN customer_orders CO ON RO.order_id = CO.order_id
+		)
+		
+		SELECT PT.order_id, COUNT(PT.order_id) AS Order_count, SUM(PT.Preparation_time) AS Prep_mins
+		FROM Prep_time PT
+		GROUP BY order_id
+		ORDER BY Order_count DESC;
+		
+		#4:
+		SELECT customer_id, AVG(distance) AS Average_distance_travelled
+		FROM customer_orders CO
+		LEFT JOIN runner_orders RO ON RO.order_id = CO.order_id
+		GROUP BY customer_id
+		
+		#5:
+		SELECT (MAX(duration) - MIN(duration)) AS LongestVsShortest_delivery_time
+		FROM runner_orders
+		
+		#6:
+		SELECT runner_id, order_id, (distance/duration) As AVG_Speed
+		FROM runner_orders
+		WHERE distance <> 0 AND duration <> 0
+		ORDER BY runner_id
+		
+		#7:
+		WITH success_rate AS (
+		SELECT runner_id, 
+					 COUNT(CASE WHEN cancellation = 'No Cancellation' THEN 1 END) AS SD, 
+					 COUNT(CASE WHEN cancellation = 'Restaurant Cancellation' OR cancellation ='Customer Cancellation' THEN 0 END) AS UD
+		FROM runner_orders
+		GROUP BY runner_id )
+		
+		SELECT runner_id, Round((SD)/(SD + UD)* 100) AS percent_success
+		FROM success_rate
+		GROUP BY runner_id
+	
+	
+	#C:  INGREDIENT OPTIMISATION
+	
+		#1: 
+		SELECT pizza_id, 
+						GROUP_CONCAT(t.topping_name) AS registration_date
+		FROM pizza_recipes p
+		JOIN pizza_toppings t ON FIND_IN_SET(t.topping_id,p.toppings)
+		GROUP BY pizza_id;
+		
+		#2:
+		SELECT CONCAT(t.topping_name) AS added_extra
+		FROM customer_orders c
+		JOIN pizza_toppings t ON FIND_IN_SET(t.topping_id,c.extras)
+
+		#3:
+		SELECT CONCAT(t.topping_name) AS common_exclusion
+		FROM customer_orders c
+		JOIN pizza_toppings t ON FIND_IN_SET(t.topping_id,c.exclusions)
+		
+	#D: PRICING AND RATINGS
+	
+		#1:
+		SELECT pizza_name,
+					 SUM(CASE WHEN c.pizza_id = 1 THEN 12 ELSE 10 END ) AS Profit
+		FROM customer_orders c
+		JOIN pizza_names n 
+			ON c.pizza_id = n.pizza_id
+		JOIN runner_orders r
+			ON c.order_id = r.order_id
+		WHERE cancellation = 'No Cancellation'
+		GROUP BY pizza_name
+		
+		
+		
+		#5:                                          
+		WITH Profit AS(
+		SELECT 
+					 c.order_id,
+				SUM(CASE WHEN c.pizza_id = 1 THEN 12 ELSE 10 END ) AS Cost            
+		FROM runner_orders r
+		JOIN customer_orders c 
+				 ON c.order_id = r.order_id
+		WHERE cancellation = 'No Cancellation'
+		GROUP BY c.order_id),
+		
+		Delivery AS(
+		SELECT r.order_id,
+				(distance * 0.30) AS delivery_fee             
+		FROM runner_orders r
+		WHERE cancellation = 'No Cancellation')
+		
+		SELECT p.order_id,(Cost - delivery_fee) AS pizza_runner_profit
+		FROM Profit p
+		JOIN Delivery d
+		ON p.order_id = d.order_id
+		
