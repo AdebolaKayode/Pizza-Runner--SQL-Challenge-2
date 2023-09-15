@@ -8,3 +8,9 @@
 This case study zooms in on how we're putting sales process data to work, tackling some crucial business questions about customer orders, deliveries, what customers prefer, and how well pizza runner is doing.
 
 ---
+
+
+## VIEW FULL PROJECT HERE
+ - [Medium Article](https://medium.com/@madebolakayode/pizza-runner-a-business-case-study-with-sql-2c1d5d01f9cb?postPublishedType=initial)
+ - [Pizza Runner Dashboard and Key Recommendations](https://www.novypro.com/project/business-performance-dashboard--foodie-fi)
+   
